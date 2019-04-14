@@ -10,13 +10,13 @@ namespace NBitcoin.Protocol.Behaviors
 {
 	[Flags]
 	public enum AddressManagerBehaviorMode
-	{		
+	{
 		/// <summary>
-		/// Do not advertize nor discover new peers
+		/// Do not advertise or discover new peers
 		/// </summary>
-		None = 0,	
+		None = 0,
 		/// <summary>
-		/// Only advertize known peers
+		/// Only advertise known peers
 		/// </summary>
 		Advertize = 1,
 		/// <summary>
@@ -24,7 +24,7 @@ namespace NBitcoin.Protocol.Behaviors
 		/// </summary>
 		Discover = 2,
 		/// <summary>
-		/// Advertize known peer and discover peer
+		/// Advertise known peer and discover peer
 		/// </summary>
 		AdvertizeDiscover = 3,
 	}
@@ -42,14 +42,14 @@ namespace NBitcoin.Protocol.Behaviors
 		public static AddressManager GetAddrman(NodeConnectionParameters parameters)
 		{
 			if(parameters == null)
-				throw new ArgumentNullException("parameters");
+				throw new ArgumentNullException(nameof(parameters));
 			return GetAddrman(parameters.TemplateBehaviors);
 		}
 
 		public static AddressManager GetAddrman(NodeBehaviorsCollection behaviors)
 		{
 			if(behaviors == null)
-				throw new ArgumentNullException("behaviors");
+				throw new ArgumentNullException(nameof(behaviors));
 			var behavior = behaviors.Find<AddressManagerBehavior>();
 			if(behavior == null)
 				return null;
@@ -58,21 +58,38 @@ namespace NBitcoin.Protocol.Behaviors
 		public static void SetAddrman(Node node, AddressManager addrman)
 		{
 			if(node == null)
-				throw new ArgumentNullException("node");
+				throw new ArgumentNullException(nameof(node));
 			SetAddrman(node.Behaviors, addrman);
 		}
 
 		public static void SetAddrman(NodeConnectionParameters parameters, AddressManager addrman)
 		{
 			if(parameters == null)
-				throw new ArgumentNullException("parameters");
+				throw new ArgumentNullException(nameof(parameters));
 			SetAddrman(parameters.TemplateBehaviors, addrman);
+		}
+
+
+		int _PeersToDiscover = 1000;
+		/// <summary>
+		/// The minimum number of peers to discover before trying to connect to a node using the AddressManager (Default: 1000)
+		/// </summary>
+		public int PeersToDiscover
+		{
+			get
+			{
+				return _PeersToDiscover;
+			}
+			set
+			{
+				_PeersToDiscover = value;
+			}
 		}
 
 		public static void SetAddrman(NodeBehaviorsCollection behaviors, AddressManager addrman)
 		{
 			if(behaviors == null)
-				throw new ArgumentNullException("behaviors");
+				throw new ArgumentNullException(nameof(behaviors));
 			var behavior = behaviors.Find<AddressManagerBehavior>();
 			if(behavior == null)
 			{
@@ -86,7 +103,7 @@ namespace NBitcoin.Protocol.Behaviors
 		public AddressManagerBehavior(AddressManager manager)
 		{
 			if(manager == null)
-				throw new ArgumentNullException("manager");
+				throw new ArgumentNullException(nameof(manager));
 			_AddressManager = manager;
 			Mode = AddressManagerBehaviorMode.AdvertizeDiscover;
 		}
@@ -107,7 +124,7 @@ namespace NBitcoin.Protocol.Behaviors
 			{
 				AssertNotAttached();
 				if(value == null)
-					throw new ArgumentNullException("value");
+					throw new ArgumentNullException(nameof(value));
 				_AddressManager = value;
 			}
 		}
@@ -158,7 +175,17 @@ namespace NBitcoin.Protocol.Behaviors
 
 		public override object Clone()
 		{
-			return new AddressManagerBehavior(AddressManager);
+			return new AddressManagerBehavior(AddressManager)
+			{
+				PeersToDiscover = PeersToDiscover,
+				Mode = Mode
+			};
+		}
+
+		internal void DiscoverPeers(Network network, NodeConnectionParameters parameters)
+		{
+			if(Mode.HasFlag(AddressManagerBehaviorMode.Discover))
+				AddressManager.DiscoverPeers(network, parameters, PeersToDiscover);
 		}
 
 		#endregion

@@ -2,13 +2,12 @@
 {
 	public abstract class BitcoinExtKeyBase : Base58Data, IDestination
 	{
+		protected BitcoinExtKeyBase()
+		{
+
+		}
 		protected BitcoinExtKeyBase(IBitcoinSerializable key, Network network)
 			: base(key.ToBytes(), network)
-		{
-		}
-
-		protected BitcoinExtKeyBase(string base58, Network network)
-			: base(base58, network)
 		{
 		}
 
@@ -32,8 +31,8 @@
 		/// Constructor. Creates an extended key from the Base58 representation, checking the expected network.
 		/// </summary>
 		public BitcoinExtKey(string base58, Network expectedNetwork = null)
-			: base(base58, expectedNetwork)
 		{
+			Init<BitcoinExtKey>(base58, expectedNetwork);
 		}
 
 		/// <summary>
@@ -67,7 +66,7 @@
 				if(_Key == null)
 				{
 					_Key = new ExtKey();
-					_Key.ReadWrite(vchData);
+					_Key.ReadWrite(new BitcoinStream(vchData));
 				}
 				return _Key;
 			}
@@ -139,8 +138,8 @@
 		/// Constructor. Creates an extended public key from the Base58 representation, checking the expected network.
 		/// </summary>
 		public BitcoinExtPubKey(string base58, Network expectedNetwork = null)
-			: base(base58, expectedNetwork)
 		{
+			Init<BitcoinExtPubKey>(base58, expectedNetwork);
 		}
 
 		/// <summary>
@@ -163,9 +162,26 @@
 				if(_PubKey == null)
 				{
 					_PubKey = new ExtPubKey();
-					_PubKey.ReadWrite(vchData);
+					_PubKey.ReadWrite(new BitcoinStream(vchData));
 				}
 				return _PubKey;
+			}
+		}
+
+		protected override bool IsValid
+		{
+			get
+			{
+				var baseSize = 1 + 4 + 4 + 32;
+				if(vchData.Length != baseSize + 33 && vchData.Length != baseSize + 65)
+					return false;
+				try
+				{
+					_PubKey = new ExtPubKey();
+					_PubKey.ReadWrite(new BitcoinStream(vchData));
+					return true;
+				}
+				catch { return false; }
 			}
 		}
 

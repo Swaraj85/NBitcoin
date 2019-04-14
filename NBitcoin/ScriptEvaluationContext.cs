@@ -4,7 +4,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
 
 namespace NBitcoin
 {
@@ -67,22 +66,22 @@ namespace NBitcoin
 
 	public class TransactionChecker
 	{
-		public TransactionChecker(Transaction tx, int index, Money amount, PrecomputedTransactionData precomputedTransactionData)
+		public TransactionChecker(Transaction tx, int index, TxOut spentOutput, PrecomputedTransactionData precomputedTransactionData)
 		{
 			if(tx == null)
-				throw new ArgumentNullException("tx");
+				throw new ArgumentNullException(nameof(tx));
 			_Transaction = tx;
 			_Index = index;
-			_Amount = amount;
+			_SpentOutput = spentOutput;
 			_PrecomputedTransactionData = precomputedTransactionData;
 		}
-		public TransactionChecker(Transaction tx, int index, Money amount = null)
+		public TransactionChecker(Transaction tx, int index, TxOut spentOutput = null)
 		{
 			if(tx == null)
-				throw new ArgumentNullException("tx");
+				throw new ArgumentNullException(nameof(tx));
 			_Transaction = tx;
 			_Index = index;
-			_Amount = amount;
+			_SpentOutput = spentOutput;
 		}
 
 
@@ -121,12 +120,12 @@ namespace NBitcoin
 			}
 		}
 
-		private readonly Money _Amount;
-		public Money Amount
+		private readonly TxOut _SpentOutput;
+		public TxOut SpentOutput
 		{
 			get
 			{
-				return _Amount;
+				return _SpentOutput;
 			}
 		}
 	}
@@ -425,9 +424,17 @@ namespace NBitcoin
 			get;
 			set;
 		}
+
+		[Obsolete("Use VerifyScript(Script scriptSig, Transaction txTo, int nIn, TxOut spentOutput) instead")]
 		public bool VerifyScript(Script scriptSig, Script scriptPubKey, Transaction txTo, int nIn, Money value)
 		{
-			return VerifyScript(scriptSig, scriptPubKey, new TransactionChecker(txTo, nIn, value));
+			TxOut txOut = txTo.Outputs.CreateNewTxOut(value, scriptPubKey);
+			return VerifyScript(scriptSig, scriptPubKey, new TransactionChecker(txTo, nIn, txOut));
+		}
+
+		public bool VerifyScript(Script scriptSig, Transaction txTo, int nIn, TxOut spentOutput)
+		{
+			return VerifyScript(scriptSig, spentOutput.ScriptPubKey, new TransactionChecker(txTo, nIn, spentOutput));
 		}
 
 		public bool VerifyScript(Script scriptSig, Script scriptPubKey, TransactionChecker checker)
@@ -1094,7 +1101,7 @@ namespace NBitcoin
 										return SetError(ScriptError.InvalidStackOperation);
 
 									var vch = _stack.Top(-1);
-									_stack.Insert(0, vch);
+									_stack.Insert(-3, vch);
 									break;
 								}
 							case OpcodeType.OP_SIZE:
@@ -1329,7 +1336,7 @@ namespace NBitcoin
 									var scriptCode = new Script(s._Script.Skip(pbegincodehash).ToArray());
 									// Drop the signature, since there's no way for a signature to sign itself
 									if(hashversion == (int)HashVersion.Original)
-										scriptCode.FindAndDelete(vchSig);
+										scriptCode = scriptCode.FindAndDelete(vchSig);
 
 									if(!CheckSignatureEncoding(vchSig) || !CheckPubKeyEncoding(vchPubKey, hashversion))
 									{
@@ -1394,7 +1401,7 @@ namespace NBitcoin
 									{
 										var vchSig = _stack.Top(-isig - k);
 										if(hashversion == (int)HashVersion.Original)
-											scriptCode.FindAndDelete(vchSig);
+											scriptCode = scriptCode.FindAndDelete(vchSig);
 									}
 
 									bool fSuccess = true;
@@ -1672,7 +1679,7 @@ namespace NBitcoin
 		}
 
 
-		static bool IsDefinedHashtypeSignature(byte[] vchSig)
+		bool IsDefinedHashtypeSignature(byte[] vchSig)
 		{
 			if(vchSig.Length == 0)
 			{
@@ -1680,6 +1687,10 @@ namespace NBitcoin
 			}
 
 			var temp = ~(SigHash.AnyoneCanPay);
+			if((ScriptVerify & ScriptVerify.ForkId) != 0)
+			{
+				temp = (SigHash)((uint)temp & ~(0x40u));
+			}
 			byte nHashType = (byte)(vchSig[vchSig.Length - 1] & (byte)temp);
 			if(nHashType < (byte)SigHash.All || nHashType > (byte)SigHash.Single)
 				return false;
@@ -1924,9 +1935,9 @@ namespace NBitcoin
 		}
 
 		public bool CheckSig(byte[] vchSig, byte[] vchPubKey, Script scriptCode, Transaction txTo, int nIn)
-		{
-			return CheckSig(vchSig, vchPubKey, scriptCode, new TransactionChecker(txTo, nIn), 0);
-		}
+			=> CheckSig(vchSig, vchPubKey, scriptCode, txTo, nIn, 0, null);
+		public bool CheckSig(byte[] vchSig, byte[] vchPubKey, Script scriptCode, Transaction txTo, int nIn, int sigVersion = 0, TxOut spentOutput = null)
+			=> CheckSig(vchSig, vchPubKey, scriptCode, new TransactionChecker(txTo, nIn, spentOutput), sigVersion);
 		bool CheckSig(byte[] vchSig, byte[] vchPubKey, Script scriptCode, TransactionChecker checker, int sigversion)
 		{
 			PubKey pubkey = null;
@@ -1959,7 +1970,7 @@ namespace NBitcoin
 			if(!IsAllowedSignature(scriptSig.SigHash))
 				return false;
 
-			uint256 sighash = Script.SignatureHash(scriptCode, checker.Transaction, checker.Index, scriptSig.SigHash, checker.Amount, (HashVersion)sigversion, checker.PrecomputedTransactionData);
+			uint256 sighash = checker.Transaction.GetSignatureHash(scriptCode, checker.Index, scriptSig.SigHash, checker.SpentOutput, (HashVersion)sigversion, checker.PrecomputedTransactionData);
 			_SignedHashes.Add(new SignedHash()
 			{
 				ScriptCode = scriptCode,
@@ -2150,10 +2161,13 @@ namespace NBitcoin
 		public void Insert(int position, T value)
 		{
 			EnsureSize();
-			var newArray = new T[_array.Length];
-			Array.Copy(_array, position, newArray, position + 1, _position - position + 1);
-			_array = newArray;
-			_array[position] = value;
+
+			position = Count + position;
+			for(int i = _position; i >= position + 1; i--)
+			{
+				_array[i + 1] = _array[i];
+			}
+			_array[position + 1] = value;
 			_position++;
 		}
 
@@ -2173,14 +2187,13 @@ namespace NBitcoin
 		/// <param name="to">The item position</param>
 		public void Remove(int from, int to)
 		{
-			var dest = new T[_array.Length];
-			var f = Count + from;
-			var t = Count + to;
-			var diff = t - f;
-			Array.Copy(_array, 0, dest, 0, f);
-			Array.Copy(_array, t, dest, f, _position - diff + 1);
-			_array = dest;
-			_position -= diff;
+			int toRemove = to - from;
+			for(int i = Count + from; i < Count + from + toRemove; i++)
+			{
+				for(int y = Count + from; y < Count; y++)
+					_array[y] = _array[y + 1];
+			}
+			_position -= toRemove;
 		}
 
 		private void EnsureSize()

@@ -1,4 +1,5 @@
-﻿using NBitcoin.DataEncoders;
+﻿#if !NOJSONNET
+using NBitcoin.DataEncoders;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
@@ -10,14 +11,16 @@ namespace NBitcoin.RPC
 {
 	public class UnspentCoin
 	{
-		internal UnspentCoin(JObject unspent)
+		internal UnspentCoin(JObject unspent, Network network)
 		{
 			OutPoint = new OutPoint(uint256.Parse((string)unspent["txid"]), (uint)unspent["vout"]);
-			Address = Network.CreateFromBase58Data<BitcoinAddress>((string)unspent["address"]);
+			var address = (string)unspent["address"];
+			if(address != null)
+				Address = network.Parse<BitcoinAddress>(address);
 			Account = (string)unspent["account"];
 			ScriptPubKey = new Script(Encoders.Hex.DecodeData((string)unspent["scriptPubKey"]));
 			var redeemScriptHex = (string)unspent["redeemScript"];
-			if (redeemScriptHex != null)
+			if(redeemScriptHex != null)
 			{
 				RedeemScript = new Script(Encoders.Hex.DecodeData(redeemScriptHex));
 			}
@@ -26,7 +29,7 @@ namespace NBitcoin.RPC
 			Confirmations = (uint)unspent["confirmations"];
 
 			// Added in Bitcoin Core 0.10.0
-			if (unspent["spendable"] != null)
+			if(unspent["spendable"] != null)
 			{
 				IsSpendable = (bool)unspent["spendable"];
 			}
@@ -79,7 +82,10 @@ namespace NBitcoin.RPC
 
 		public Coin AsCoin()
 		{
-			return new Coin(OutPoint, new TxOut(Amount, ScriptPubKey));
+			var coin = new Coin(OutPoint, new TxOut(Amount, ScriptPubKey));
+			if(RedeemScript != null)
+				coin = coin.ToScriptCoin(RedeemScript);
+			return coin;
 		}
 
 		public bool IsSpendable
@@ -89,3 +95,4 @@ namespace NBitcoin.RPC
 		}
 	}
 }
+#endif

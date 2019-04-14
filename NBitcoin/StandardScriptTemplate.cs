@@ -75,7 +75,7 @@ namespace NBitcoin
 		public Script GenerateScriptPubKey(params byte[][] data)
 		{
 			if(data == null)
-				throw new ArgumentNullException("data");
+				throw new ArgumentNullException(nameof(data));
 			Op[] ops = new Op[data.Length + 1];
 			ops[0] = OpcodeType.OP_RETURN;
 			for(int i = 0; i < data.Length; i++)
@@ -126,8 +126,18 @@ namespace NBitcoin
 				return _Instance;
 			}
 		}
+
 		public Script GenerateScriptPubKey(int sigCount, params PubKey[] keys)
 		{
+			return GenerateScriptPubKey(sigCount, false, keys);
+		}
+
+		public Script GenerateScriptPubKey(int sigCount, bool sort, params PubKey[] keys)
+		{
+			if (keys == null)
+				throw new ArgumentNullException(nameof(keys));
+			if (sort)
+				Array.Sort(keys);
 			List<Op> ops = new List<Op>();
 			var push = Op.GetPushOp(sigCount);
 			if(!push.IsSmallUInt)
@@ -136,6 +146,7 @@ namespace NBitcoin
 			var keyCount = Op.GetPushOp(keys.Length);
 			if(!keyCount.IsSmallUInt)
 				throw new ArgumentOutOfRangeException("key count should be less or equal to 16");
+
 			foreach(var key in keys)
 			{
 				ops.Add(Op.GetPushOp(key.ToBytes()));
@@ -150,13 +161,15 @@ namespace NBitcoin
 			if(ops.Length < 3)
 				return false;
 
-			var sigCount = ops[0];
-			if(!sigCount.IsSmallUInt)
+			var sigCount = ops[0].GetInt();
+			var keyCount = ops[ops.Length - 2].GetInt();
+
+			if(sigCount == null || keyCount == null)
 				return false;
-			var pubKeyCount = ops[ops.Length - 2];
-			if(!pubKeyCount.IsSmallUInt)
+			if(keyCount.Value < 0 || keyCount.Value > 20)
 				return false;
-			var keyCount = (uint)pubKeyCount.GetValue();
+			if(sigCount.Value < 0 || sigCount.Value > keyCount.Value)
+				return false;
 			if(1 + keyCount + 1 + 1 != ops.Length)
 				return false;
 			for(int i = 1; i < keyCount + 1; i++)
@@ -176,9 +189,9 @@ namespace NBitcoin
 			if(!CheckScriptPubKeyCore(scriptPubKey, ops))
 				return null;
 
-			var sigCount = (int)ops[0].GetValue();
-			var keyCount = (int)ops[ops.Length - 2].GetValue();
-
+			//already checked in CheckScriptPubKeyCore
+			var sigCount = ops[0].GetInt().Value;
+			var keyCount = ops[ops.Length - 2].GetInt().Value;
 			List<PubKey> keys = new List<PubKey>();
 			List<byte[]> invalidKeys = new List<byte[]>();
 			for(int i = 1; i < keyCount + 1; i++)
@@ -233,7 +246,9 @@ namespace NBitcoin
 			{
 				if(!CheckScriptPubKeyCore(scriptPubKey, scriptPubKeyOps))
 					return false;
-				var sigCountExpected = scriptPubKeyOps[0].GetValue();
+				var sigCountExpected = scriptPubKeyOps[0].GetInt();
+				if(sigCountExpected == null)
+					return false;
 				return sigCountExpected == scriptSigOps.Length + 1;
 			}
 			return true;
@@ -301,6 +316,11 @@ namespace NBitcoin
 		public TransactionSignature[] GetMultisigSignatures()
 		{
 			return PayToMultiSigTemplate.Instance.ExtractScriptSigParameters(new Script(Pushes.Select(p => Op.GetPushOp(p)).ToArray()));
+		}
+
+		public PubKey[] GetMultisigPubKeys()
+		{
+			return PayToMultiSigTemplate.Instance.ExtractScriptPubKeyParameters(RedeemScript).PubKeys;
 		}
 	}
 	//https://github.com/bitcoin/bips/blob/master/bip-0016.mediawiki
@@ -619,13 +639,13 @@ namespace NBitcoin
 		public Script GenerateScriptPubKey(BitcoinPubKeyAddress address)
 		{
 			if(address == null)
-				throw new ArgumentNullException("address");
+				throw new ArgumentNullException(nameof(address));
 			return GenerateScriptPubKey(address.Hash);
 		}
 		public Script GenerateScriptPubKey(PubKey pubKey)
 		{
 			if(pubKey == null)
-				throw new ArgumentNullException("pubKey");
+				throw new ArgumentNullException(nameof(pubKey));
 			return GenerateScriptPubKey(pubKey.Hash);
 		}
 		public Script GenerateScriptPubKey(KeyId pubkeyHash)
@@ -642,7 +662,7 @@ namespace NBitcoin
 		public Script GenerateScriptSig(TransactionSignature signature, PubKey publicKey)
 		{
 			if(publicKey == null)
-				throw new ArgumentNullException("publicKey");
+				throw new ArgumentNullException(nameof(publicKey));
 			return new Script(
 				signature == null ? OpcodeType.OP_0 : Op.GetPushOp(signature.ToBytes()),
 				Op.GetPushOp(publicKey.ToBytes())
@@ -726,7 +746,7 @@ namespace NBitcoin
 		public virtual bool CheckScriptPubKey(Script scriptPubKey)
 		{
 			if(scriptPubKey == null)
-				throw new ArgumentNullException("scriptPubKey");
+				throw new ArgumentNullException(nameof(scriptPubKey));
 			bool needMoreCheck;
 			bool result = FastCheckScriptPubKey(scriptPubKey, out needMoreCheck);
 			if(needMoreCheck)
@@ -746,7 +766,7 @@ namespace NBitcoin
 		public virtual bool CheckScriptSig(Script scriptSig, Script scriptPubKey)
 		{
 			if(scriptSig == null)
-				throw new ArgumentNullException("scriptSig");
+				throw new ArgumentNullException(nameof(scriptSig));
 			bool needMoreCheck;
 			var result = FastCheckScriptSig(scriptSig, scriptPubKey, out needMoreCheck);
 			if(needMoreCheck)
@@ -779,16 +799,10 @@ namespace NBitcoin
 				return _Instance = _Instance ?? new PayToWitPubKeyHashTemplate();
 			}
 		}
-		public Script GenerateScriptPubKey(BitcoinWitPubKeyAddress address)
-		{
-			if(address == null)
-				throw new ArgumentNullException("address");
-			return GenerateScriptPubKey(address.Hash);
-		}
 		public Script GenerateScriptPubKey(PubKey pubKey)
 		{
 			if(pubKey == null)
-				throw new ArgumentNullException("pubKey");
+				throw new ArgumentNullException(nameof(pubKey));
 			return GenerateScriptPubKey(pubKey.WitHash);
 		}
 		public Script GenerateScriptPubKey(WitKeyId pubkeyHash)
@@ -799,18 +813,24 @@ namespace NBitcoin
 		public WitScript GenerateWitScript(TransactionSignature signature, PubKey publicKey)
 		{
 			if(publicKey == null)
-				throw new ArgumentNullException("publicKey");
+				throw new ArgumentNullException(nameof(publicKey));
 			return new WitScript(
 				signature == null ? OpcodeType.OP_0 : Op.GetPushOp(signature.ToBytes()),
 				Op.GetPushOp(publicKey.ToBytes())
 				);
 		}
 
+		public Script GenerateScriptPubKey(BitcoinWitPubKeyAddress address)
+		{
+			if(address == null)
+				throw new ArgumentNullException(nameof(address));
+			return GenerateScriptPubKey(address.Hash);
+		}
 
 		public override bool CheckScriptPubKey(Script scriptPubKey)
 		{
 			if(scriptPubKey == null)
-				throw new ArgumentNullException("scriptPubKey");
+				throw new ArgumentNullException(nameof(scriptPubKey));
 			var bytes = scriptPubKey.ToBytes(true);
 			return bytes.Length == 22 && bytes[0] == 0 && bytes[1] == 20;
 		}
@@ -832,7 +852,7 @@ namespace NBitcoin
 			{
 				return new PayToWitPubkeyHashScriptSigParameters()
 				{
-					TransactionSignature = (witScript[0].Length == 1 && witScript[0][0] == 0) ? null : new TransactionSignature(witScript[0]),
+					TransactionSignature = (witScript[0].Length == 0) ? null : new TransactionSignature(witScript[0]),
 					PublicKey = new PubKey(witScript[1], true),
 				};
 			}
@@ -845,7 +865,7 @@ namespace NBitcoin
 		private bool CheckWitScriptCore(WitScript witScript)
 		{
 			return witScript.PushCount == 2 &&
-				   ((witScript[0].Length == 1 && witScript[0][0] == 0) || (TransactionSignature.IsValid(witScript[0], ScriptVerify.None))) &&
+				   ((witScript[0].Length == 0) || (TransactionSignature.IsValid(witScript[0], ScriptVerify.None))) &&
 				   PubKey.Check(witScript[1], false);
 		}
 
@@ -854,6 +874,7 @@ namespace NBitcoin
 		{
 			return GenerateWitScript(parameters.TransactionSignature, parameters.PublicKey);
 		}
+
 	}
 
 	public class PayToWitScriptHashTemplate : PayToWitTemplate
@@ -866,12 +887,6 @@ namespace NBitcoin
 				return _Instance = _Instance ?? new PayToWitScriptHashTemplate();
 			}
 		}
-		public Script GenerateScriptPubKey(BitcoinWitScriptAddress address)
-		{
-			if(address == null)
-				throw new ArgumentNullException("address");
-			return GenerateScriptPubKey(address.Hash);
-		}
 		public Script GenerateScriptPubKey(WitScriptId scriptHash)
 		{
 			return scriptHash.ScriptPubKey;
@@ -880,9 +895,9 @@ namespace NBitcoin
 		public WitScript GenerateWitScript(Script scriptSig, Script redeemScript)
 		{
 			if(redeemScript == null)
-				throw new ArgumentNullException("redeemScript");
+				throw new ArgumentNullException(nameof(redeemScript));
 			if(scriptSig == null)
-				throw new ArgumentNullException("scriptSig");
+				throw new ArgumentNullException(nameof(scriptSig));
 			if(!scriptSig.IsPushOnly)
 				throw new ArgumentException("The script sig should be push only", "scriptSig");
 			scriptSig = scriptSig + Op.GetPushOp(redeemScript.ToBytes(true));
@@ -892,16 +907,23 @@ namespace NBitcoin
 		public WitScript GenerateWitScript(Op[] scriptSig, Script redeemScript)
 		{
 			if(redeemScript == null)
-				throw new ArgumentNullException("redeemScript");
+				throw new ArgumentNullException(nameof(redeemScript));
 			if(scriptSig == null)
-				throw new ArgumentNullException("scriptSig");
+				throw new ArgumentNullException(nameof(scriptSig));
 			return GenerateWitScript(new Script(scriptSig), redeemScript);
+		}
+
+		public Script GenerateScriptPubKey(BitcoinWitScriptAddress address)
+		{
+			if(address == null)
+				throw new ArgumentNullException(nameof(address));
+			return GenerateScriptPubKey(address.Hash);
 		}
 
 		public override bool CheckScriptPubKey(Script scriptPubKey)
 		{
 			if(scriptPubKey == null)
-				throw new ArgumentNullException("scriptPubKey");
+				throw new ArgumentNullException(nameof(scriptPubKey));
 			var bytes = scriptPubKey.ToBytes(true);
 			return bytes.Length == 34 && bytes[0] == 0 && bytes[1] == 32;
 		}
@@ -964,7 +986,7 @@ namespace NBitcoin
 		public Script GenerateScriptPubKey(OpcodeType segWitVersion, byte[] data)
 		{
 			if(data == null)
-				throw new ArgumentNullException("data");
+				throw new ArgumentNullException(nameof(data));
 			if(!ValidSegwitVersion((byte)segWitVersion))
 				throw new ArgumentException("Segwit version must be from OP_0 to OP_16", "segWitVersion");
 			return new Script(segWitVersion, Op.GetPushOp(data));
@@ -973,14 +995,14 @@ namespace NBitcoin
 		public override bool CheckScriptSig(Script scriptSig, Script scriptPubKey)
 		{
 			if(scriptSig == null)
-				throw new ArgumentNullException("scriptSig");
+				throw new ArgumentNullException(nameof(scriptSig));
 			return scriptSig.Length == 0;
 		}
 
 		public override bool CheckScriptPubKey(Script scriptPubKey)
 		{
 			if(scriptPubKey == null)
-				throw new ArgumentNullException("scriptPubKey");
+				throw new ArgumentNullException(nameof(scriptPubKey));
 			var bytes = scriptPubKey.ToBytes(true);
 			if(bytes.Length < 4 || bytes.Length > 34)
 			{

@@ -1,4 +1,6 @@
-﻿namespace NBitcoin.DataEncoders
+﻿using System;
+
+namespace NBitcoin.DataEncoders
 {
 	public abstract class DataEncoder
 	{
@@ -62,6 +64,15 @@
 			}
 		}
 
+		static readonly Base32Encoder _Base32 = new Base32Encoder();
+		public static DataEncoder Base32
+		{
+			get
+			{
+				return _Base32;
+			}
+		}
+
 		private static readonly Base58CheckEncoder _Base58Check = new Base58CheckEncoder();
 		public static DataEncoder Base58Check
 		{
@@ -78,6 +89,15 @@
 			{
 				return _Base64;
 			}
+		}
+
+		public static Bech32Encoder Bech32(string hrp)
+		{
+			return new Bech32Encoder(hrp);
+		}
+		public static Bech32Encoder Bech32(byte[] hrp)
+		{
+			return new Bech32Encoder(hrp);
 		}
 	}
 }

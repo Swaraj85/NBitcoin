@@ -10,20 +10,21 @@ using System.Net.Http;
 #endif
 using System.Text;
 using System.Text.RegularExpressions;
-#if WIN
+#if CLASSICDOTNET
 using System.Security.Cryptography.X509Certificates;
 #endif
 using System.Threading.Tasks;
 
 namespace NBitcoin.Payment
 {
+	[Obsolete("BIP70 is obsolete")]
 	public enum PKIType
 	{
 		None,
 		X509SHA256,
 		X509SHA1,
 	}
-
+	[Obsolete("BIP70 is obsolete")]
 	public class PaymentOutput
 	{
 		public PaymentOutput()
@@ -40,6 +41,11 @@ namespace NBitcoin.Payment
 			Amount = amount;
 			if(destination != null)
 				Script = destination.ScriptPubKey;
+		}
+		public PaymentOutput(TxOut txOut)
+		{
+			Amount = txOut.Value;
+			Script = txOut.ScriptPubKey;
 		}
 		Money _Amount;
 		public Money Amount
@@ -100,6 +106,7 @@ namespace NBitcoin.Payment
 			writer.WriteBytes(Script == null ? new byte[0] : Script.ToBytes(true));
 		}
 	}
+	[Obsolete("BIP70 is obsolete")]
 	public class PaymentDetails
 	{
 		public PaymentDetails()
@@ -123,7 +130,8 @@ namespace NBitcoin.Payment
 					case 1:
 						var network = reader.ReadString();
 						result.Network = network.Equals("main", StringComparison.OrdinalIgnoreCase) ? Network.Main :
-										 network.Equals("test", StringComparison.OrdinalIgnoreCase) ? Network.TestNet : null;
+										 network.Equals("test", StringComparison.OrdinalIgnoreCase) ? Network.TestNet :
+										 network.Equals("regtest", StringComparison.OrdinalIgnoreCase) ? Network.RegTest : null;
 						if(result.Network == null)
 							throw new NotSupportedException("Invalid network");
 						break;
@@ -158,7 +166,8 @@ namespace NBitcoin.Payment
 			if(_Network != null)
 			{
 				var str = _Network == Network.Main ? "main" :
-					_Network == Network.TestNet ? "test" : null;
+					_Network == Network.TestNet ? "test" : 
+					_Network == Network.RegTest ? "regtest" : null;
 				if(str == null)
 					throw new InvalidOperationException("Impossible to serialize a payment request on network " + _Network);
 				writer.WriteKey(1, ProtobufReaderWriter.PROTOBUF_LENDELIM);
@@ -260,7 +269,7 @@ namespace NBitcoin.Payment
 			}
 		}
 	}
-
+	[Obsolete("BIP70 is obsolete")]
 	public class PaymentRequest
 	{
 		class RecorderStream : Stream
@@ -374,7 +383,7 @@ namespace NBitcoin.Payment
 			}
 		}
 
-#if WIN
+#if !NOX509
 		private static ICertificateServiceProvider _DefaultCertificateServiceProvider = new WindowsCertificateServiceProvider();
 #else
 		private static ICertificateServiceProvider _DefaultCertificateServiceProvider;		
@@ -667,7 +676,7 @@ namespace NBitcoin.Payment
 			return signed;
 		}
 
-#if WIN
+#if CLASSICDOTNET
 		public void Sign(X509Certificate2 certificate, Payment.PKIType type)
 		{
 			Sign((object)certificate, type);
@@ -680,7 +689,7 @@ namespace NBitcoin.Payment
 		public void Sign(object certificate, Payment.PKIType type)
 		{
 			if(certificate == null)
-				throw new ArgumentNullException("certificate");
+				throw new ArgumentNullException(nameof(certificate));
 			if(type == Payment.PKIType.None)
 				throw new ArgumentException("PKIType can't be none if signing");
 			var signer = GetCertificateProvider().GetSigner();

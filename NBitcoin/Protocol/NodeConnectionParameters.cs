@@ -8,6 +8,7 @@ using System.Net;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using NBitcoin.Protocol.Connectors;
 
 namespace NBitcoin.Protocol
 {
@@ -16,14 +17,15 @@ namespace NBitcoin.Protocol
 
 		public NodeConnectionParameters()
 		{
-			ReuseBuffer = true;
 			TemplateBehaviors.Add(new PingPongBehavior());
-			Version = ProtocolVersion.PROTOCOL_VERSION;
+			Version = null;
 			IsRelay = true;
 			Services = NodeServices.Nothing;
 			ConnectCancellation = default(CancellationToken);
-			ReceiveBufferSize = 1000 * 5000;
-			SendBufferSize = 1000 * 1000;
+			// Use max supported by MAC OSX Yosemite/Mavericks/Sierra (https://fasterdata.es.net/host-tuning/osx/)
+			this.SocketSettings.ReceiveBufferSize = 1048576;
+			this.SocketSettings.SendBufferSize = 1048576;
+			////////////////////////
 			UserAgent = VersionPayload.GetNBitcoinUserAgent();
 			PreferredTransactionOptions = TransactionOptions.All;
 		}
@@ -33,17 +35,14 @@ namespace NBitcoin.Protocol
 			Version = other.Version;
 			IsRelay = other.IsRelay;
 			Services = other.Services;
-			ReceiveBufferSize = other.ReceiveBufferSize;
-			SendBufferSize = other.SendBufferSize;
 			ConnectCancellation = other.ConnectCancellation;
 			UserAgent = other.UserAgent;
 			AddressFrom = other.AddressFrom;
-			IsTrusted = other.IsTrusted;
 			Nonce = other.Nonce;
 			Advertize = other.Advertize;
-			ReuseBuffer = other.ReuseBuffer;
 			PreferredTransactionOptions = other.PreferredTransactionOptions;
-
+			EndpointConnector = other.EndpointConnector.Clone();
+			SocketSettings = other.SocketSettings.Clone();
 			foreach(var behavior in other.TemplateBehaviors)
 			{
 				TemplateBehaviors.Add(behavior.Clone());
@@ -51,14 +50,15 @@ namespace NBitcoin.Protocol
 		}
 
 		/// <summary>
-		/// Send addr unsollicited message of the AddressFrom peer when passing to Handshaked state
+		/// Send addr unsolicited message of the AddressFrom peer when passing to Handshaked state
 		/// </summary>
 		public bool Advertize
 		{
 			get;
 			set;
 		}
-		public ProtocolVersion Version
+
+		public uint? Version
 		{
 			get;
 			set;
@@ -78,14 +78,6 @@ namespace NBitcoin.Protocol
 			get;
 			set;
 		}
-		/// <summary>
-		/// If true, then no proof of work is checked on incoming headers, if null, will trust localhost
-		/// </summary>
-		public bool? IsTrusted
-		{
-			get;
-			set;
-		}
 
 		public TransactionOptions PreferredTransactionOptions
 		{
@@ -98,20 +90,40 @@ namespace NBitcoin.Protocol
 			get;
 			set;
 		}
+		[Obsolete("Use SocketSettings.ReceiveBufferSize instead")]
 		public int ReceiveBufferSize
 		{
-			get;
-			set;
+			get
+			{
+				return SocketSettings.ReceiveBufferSize is int v ? v : 1048576;
+			}
+			set
+			{
+				SocketSettings.ReceiveBufferSize = value;
+			}
 		}
+
+		[Obsolete("Use SocketSettings.SendBufferSize instead")]
 		public int SendBufferSize
 		{
-			get;
-			set;
+			get
+			{
+				return SocketSettings.SendBufferSize is int v ? v : 1048576;
+			}
+			set
+			{
+				SocketSettings.SendBufferSize = value;
+			}
 		}
+
+		public SocketSettings SocketSettings { get; set; } = new SocketSettings();
+
+		public IEnpointConnector EndpointConnector { get; set; } = new DefaultEndpointConnector();
 
 		/// <summary>
 		/// Whether we reuse a 1MB buffer for deserializing messages, for limiting GC activity (Default : true)
 		/// </summary>
+		[Obsolete("Ignored, all arrays are allocated through ArrayPool")]
 		public bool ReuseBuffer
 		{
 			get;
@@ -155,7 +167,7 @@ namespace NBitcoin.Protocol
 			{
 				Nonce = Nonce == null ? RandomUtils.GetUInt64() : Nonce.Value,
 				UserAgent = UserAgent,
-				Version = Version,
+				Version = Version == null ? network.MaxP2PVersion : Version.Value,
 				Timestamp = DateTimeOffset.UtcNow,
 				AddressReceiver = peer,
 				AddressFrom = AddressFrom ?? new IPEndPoint(IPAddress.Parse("0.0.0.0").MapToIPv6Ex(), network.DefaultPort),

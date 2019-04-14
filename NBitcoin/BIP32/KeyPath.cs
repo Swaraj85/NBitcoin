@@ -40,6 +40,26 @@ namespace NBitcoin
 				.ToArray();
 		}
 
+		public static KeyPath FromBytes(byte[] data)
+		{
+			if (data == null)
+				throw new ArgumentNullException(nameof(data));
+
+			if (data.Length % 4 != 0)
+				throw new ArgumentOutOfRangeException("data length is not suited for KeyPath");
+			var depth = data.Length / 4;
+			uint[] result = new uint[depth];
+			for (int i = 0;  i < depth; i++)
+			{
+				result[i] = Utils.ToUInt32(data, i * 4, true);
+			}
+
+			return new KeyPath(result);
+		}
+
+		public byte[] ToBytes() =>
+			Indexes.Count() == 0 ? new byte[0] : Indexes.Select(i => Utils.ToBytes(i, true)).Aggregate((a, b) => a.Concat(b)).ToArray();
+
 		private static uint ParseCore(string i)
 		{
 			bool hardened = i.EndsWith("'");
@@ -77,6 +97,11 @@ namespace NBitcoin
 			uint realIndex = (uint)index;
 			realIndex = hardened ? realIndex | 0x80000000u : realIndex;
 			return Derive(new KeyPath(realIndex));
+		}
+
+		public KeyPath Derive(string path)
+		{
+			return Derive(new KeyPath(path));
 		}
 
 		public KeyPath Derive(uint index)
@@ -155,7 +180,7 @@ namespace NBitcoin
 			get
 			{
 				if(_Indexes.Length == 0)
-					throw new InvalidOperationException("No indice found in this KeyPath");
+					throw new InvalidOperationException("No index found in this KeyPath");
 				return (_Indexes[_Indexes.Length - 1] & 0x80000000u) != 0;
 			}
 		}

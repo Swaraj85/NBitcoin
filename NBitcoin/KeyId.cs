@@ -16,7 +16,7 @@ namespace NBitcoin
 		public TxDestination(byte[] value)
 		{
 			if(value == null)
-				throw new ArgumentNullException("value");
+				throw new ArgumentNullException(nameof(value));
 			_DestBytes = value;
 		}
 
@@ -120,7 +120,7 @@ namespace NBitcoin
 
 		public override BitcoinAddress GetAddress(Network network)
 		{
-			return new BitcoinPubKeyAddress(this, network);
+			return network.NetworkStringParser.CreateP2PKH(this, network);
 		}
 	}
 	public class WitKeyId : TxDestination
@@ -163,6 +163,7 @@ namespace NBitcoin
 			}
 		}
 
+		[Obsolete("Use AsKeyId().ScriptPubKey instead")]
 		public Script WitScriptPubKey
 		{
 			get
@@ -171,9 +172,14 @@ namespace NBitcoin
 			}
 		}
 
+		public KeyId AsKeyId()
+		{
+			return new KeyId(_DestBytes);
+		}
+
 		public override BitcoinAddress GetAddress(Network network)
 		{
-			return new BitcoinWitPubKeyAddress(this, network);
+			return network.NetworkStringParser.CreateP2WPKH(this, network);
 		}
 	}
 
@@ -217,7 +223,7 @@ namespace NBitcoin
 
 		public override BitcoinAddress GetAddress(Network network)
 		{
-			return new BitcoinWitScriptAddress(this, network);
+			return network.NetworkStringParser.CreateP2WSH(this, network);
 		}
 	}
 
@@ -261,7 +267,7 @@ namespace NBitcoin
 
 		public override BitcoinAddress GetAddress(Network network)
 		{
-			return new BitcoinScriptAddress(this, network);
+			return network.NetworkStringParser.CreateP2SH(this, network);
 		}
 	}
 }
